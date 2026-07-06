@@ -1,101 +1,36 @@
 import * as THREE from 'three';
 import { SwordTrail } from './effects.js';
+import { buildKirito } from './characters.js';
+import { buildSword } from './modelkit.js';
+import { terrainHeight } from './terrain.js';
 
-// The player: a procedural black-coat swordsman, third-person controls,
-// basic combo attacks and three sword skills.
-
-const lambert = (c) => new THREE.MeshLambertMaterial({ color: c });
-
-function buildCharacter() {
-  const g = new THREE.Group();
-  const coat = lambert(0x1c1e26);
-  const skinM = lambert(0xe8c4a8);
-  const hairM = lambert(0x15151c);
-
-  // torso + coat
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.34), coat);
-  torso.position.y = 1.18;
-  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.09, 0.36), lambert(0x3a3f52));
-  belt.position.y = 0.84;
-  const coatL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.55, 0.33), coat);
-  coatL.position.set(-0.17, 0.52, -0.03);
-  const coatR = coatL.clone(); coatR.position.x = 0.17;
-
-  // head
-  const headG = new THREE.Group();
-  headG.position.y = 1.78;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.42, 0.38), skinM);
-  head.position.y = 0.2;
-  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.22, 0.44), hairM);
-  hair.position.y = 0.38;
-  const bangs = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.1), hairM);
-  bangs.position.set(0, 0.3, 0.18);
-  headG.add(head, hair, bangs);
-
-  // arms — right arm is a pivot group so it can swing the sword
-  const armR = new THREE.Group();
-  armR.position.set(0.41, 1.5, 0);
-  const armRMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.66, 0.22), coat);
-  armRMesh.position.y = -0.33;
-  const handR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.18), skinM);
-  handR.position.y = -0.72;
-  armR.add(armRMesh, handR);
-
-  const armL = new THREE.Group();
-  armL.position.set(-0.41, 1.5, 0);
-  const armLMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.66, 0.22), coat);
-  armLMesh.position.y = -0.33;
-  armL.add(armLMesh);
-
-  // legs (pivot at hip)
-  const legL = new THREE.Group();
-  legL.position.set(-0.16, 0.82, 0);
-  const legLMesh = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.8, 0.26), lambert(0x23252e));
-  legLMesh.position.y = -0.4;
-  legL.add(legLMesh);
-  const legR = new THREE.Group();
-  legR.position.set(0.16, 0.82, 0);
-  const legRMesh = legLMesh.clone();
-  legR.add(legRMesh);
-
-  // sword — Elucidator: black blade, glowing edge
-  const sword = new THREE.Group();
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.05, 0.16), lambert(0x2a2d38));
-  blade.position.y = 0.62;
-  const edge = new THREE.Mesh(
-    new THREE.BoxGeometry(0.02, 1.05, 0.17),
-    new THREE.MeshBasicMaterial({ color: 0x9fd8ff }),
-  );
-  edge.position.y = 0.62;
-  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.2), lambert(0x4a4f63));
-  guard.position.y = 0.08;
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.24, 8), lambert(0x14161c));
-  grip.position.y = -0.06;
-  sword.add(blade, edge, guard, grip);
-  sword.position.set(0, -0.74, 0.05);
-  sword.rotation.x = Math.PI / 2; // rest: pointing forward-ish from hand
-  armR.add(sword);
-
-  g.add(torso, belt, coatL, coatR, headG, armR, armL, legL, legR);
-  g.traverse((m) => { if (m.isMesh) m.castShadow = true; });
-
-  return { group: g, armR, armL, legL, legR, headG, sword, blade };
-}
+// ---------------------------------------------------------------------------
+// The player. One-handed sword skills from Floor 1 canon:
+//   Horizontal · Rage Spike · Vertical Arc
+// Starts with the Small Sword; earns the Anneal Blade from the Horunka
+// quest and the Coat of Midnight from the floor boss.
+// ---------------------------------------------------------------------------
 
 const SKILLS = [
-  { name: 'Horizontal', key: '1', cd: 5, dur: 0.5, mult: 1.7, color: 0x6ee7ff },
-  { name: 'Rage Spike', key: '2', cd: 7, dur: 0.4, mult: 2.3, color: 0xff8a4a },
-  { name: 'Starburst', key: '3', cd: 14, dur: 1.35, mult: 0.75, color: 0xb08aff },
+  { name: 'Horizontal', cd: 5, dur: 0.5, mult: 1.7, color: 0x6ee7ff },
+  { name: 'Rage Spike', cd: 7, dur: 0.4, mult: 2.3, color: 0xff8a4a },
+  { name: 'Vertical Arc', cd: 10, dur: 0.55, mult: 1.5, color: 0xb08aff },
 ];
 
 export class Player {
   constructor(game) {
     this.game = game;
-    const built = buildCharacter();
-    this.mesh = built.group;
-    this.parts = built;
-    this.mesh.position.set(0, 0, 8);
+    this.rig = buildKirito();
+    this.mesh = this.rig.root;
     game.scene.add(this.mesh);
+
+    // starter blade — swapped for the Anneal Blade by the Horunka quest
+    this.swordMount = new THREE.Group();
+    this.swordMount.position.set(0, -0.48, 0.03);
+    this.swordMount.rotation.x = Math.PI / 2;
+    this.rig.armR.add(this.swordMount);
+    this.equipSword({ length: 0.85, width: 0.085, bladeColor: 0xaab4c4, edgeGlow: 0x9fd8ff });
+    this.hasAnneal = false;
 
     this.trail = new SwordTrail(game.scene);
 
@@ -106,17 +41,18 @@ export class Player {
     this.maxHp = 120;
     this.hp = this.maxHp;
     this.dead = false;
+    this.atkBonus = 0;
 
     // movement
-    this.vel = new THREE.Vector3();
     this.vy = 0;
     this.onGround = true;
-    this.yaw = 0;          // facing
+    this.yaw = 0;
     this.speed = 6.2;
     this.sprintMult = 1.55;
+    this.jumpY = 0; // height above terrain
 
     // combat
-    this.attackT = 0;       // time left in current swing
+    this.attackT = 0;
     this.attackDur = 0.34;
     this.combo = 0;
     this.comboReset = 0;
@@ -126,16 +62,39 @@ export class Player {
     this.skillCds = [0, 0, 0];
     this.activeSkill = -1;
     this.skillT = 0;
-    this.starburstHits = 0;
+    this.arcHits = 0;
     this.animT = 0;
 
     this._tipA = new THREE.Vector3();
     this._tipB = new THREE.Vector3();
+
+    this.setPosition(0, 118); // just inside the Town of Beginnings plaza
+  }
+
+  setPosition(x, z) {
+    this.mesh.position.set(x, terrainHeight(x, z), z);
+    this.jumpY = 0;
+    this.vy = 0;
   }
 
   get position() { return this.mesh.position; }
-  get atk() { return 12 + this.level * 4; }
+  get atk() { return 12 + this.level * 4 + this.atkBonus; }
   xpToNext() { return Math.floor(50 * Math.pow(this.level, 1.35)); }
+
+  equipSword(opts) {
+    while (this.swordMount.children.length) this.swordMount.remove(this.swordMount.children[0]);
+    this.sword = buildSword(opts);
+    this.sword.traverse((m) => { if (m.isMesh) m.castShadow = true; });
+    this.swordMount.add(this.sword);
+  }
+
+  equipAnnealBlade() {
+    this.hasAnneal = true;
+    this.atkBonus = 10;
+    this.equipSword({ length: 1.05, width: 0.1, bladeColor: 0x7a90b8, edgeGlow: 0x8ac8ff, guardColor: 0x8a94ac });
+  }
+
+  equipCoat() { this.rig.equipCoat(); }
 
   gainXP(amount) {
     this.xp += amount;
@@ -144,11 +103,11 @@ export class Player {
     while (this.xp >= this.xpToNext()) {
       this.xp -= this.xpToNext();
       this.level++;
-      const oldMax = this.maxHp;
       this.maxHp = 120 + (this.level - 1) * 28;
       this.hp = this.maxHp;
       ui.setLevel(this.level);
-      ui.announce('LEVEL UP', `You are now level ${this.level} · Max HP ${oldMax} → ${this.maxHp}`);
+      ui.setPlayerHP(this.hp, this.maxHp);
+      ui.announce('LEVEL UP', `You are now level ${this.level}`, 2600);
       this.game.effects.pillar(this.position);
       this.game.effects.ring(this.position, 0x6ee7ff, 2.2);
       this.game.audio.levelUp();
@@ -183,8 +142,7 @@ export class Player {
     this.dead = false;
     this.hp = this.maxHp;
     this.mesh.visible = true;
-    this.mesh.position.set(0, 0, 8);
-    this.vy = 0;
+    this.setPosition(0, 118);
     this.game.ui.setPlayerHP(this.hp, this.maxHp);
   }
 
@@ -208,18 +166,16 @@ export class Player {
     this.skillT = s.dur;
     this.skillCds[i] = s.cd;
     this.didHit = false;
-    this.starburstHits = 0;
+    this.arcHits = 0;
     this.trail.setColor(s.color);
     this.game.audio.skill();
     this.game.ui.announce(s.name.toUpperCase(), '', 900);
     if (i === 1) {
-      // Rage Spike: dash forward
       this.dashDir = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       this.rageHit = new Set();
     }
   }
 
-  // deal damage in a melee arc; returns true if anything was hit
   meleeHit(mult, range = 2.7, arc = 2.1, excludeSet = null) {
     const g = this.game;
     let hitAny = false;
@@ -271,7 +227,6 @@ export class Player {
       const spd = this.speed * (sprint ? this.sprintMult : 1);
       this.position.x += Math.sin(ang) * spd * dt;
       this.position.z += Math.cos(ang) * spd * dt;
-      // face movement direction unless mid-attack (then face camera fwd)
       const targetYaw = (this.attackT > 0 || this.activeSkill >= 0) ? camYaw : ang;
       let dy = targetYaw - this.yaw;
       while (dy > Math.PI) dy -= Math.PI * 2;
@@ -285,20 +240,21 @@ export class Player {
     }
     this.mesh.rotation.y = this.yaw;
 
-    // jump & gravity
+    // jump & gravity relative to terrain
     if (input.space && this.onGround) {
       this.vy = 7.5;
       this.onGround = false;
     }
     this.vy -= 20 * dt;
-    this.position.y += this.vy * dt;
-    if (this.position.y <= 0) {
-      this.position.y = 0;
+    this.jumpY += this.vy * dt;
+    if (this.jumpY <= 0) {
+      this.jumpY = 0;
       this.vy = 0;
       this.onGround = true;
     }
 
     g.world.clampPosition(this.position, 0.45);
+    this.position.y = terrainHeight(this.position.x, this.position.z) + this.jumpY;
 
     // town regen
     if (g.world.isSafeZone(this.position) && this.hp < this.maxHp) {
@@ -307,7 +263,7 @@ export class Player {
     }
 
     // ----- animation -----
-    const p = this.parts;
+    const p = this.rig;
     const walkRate = sprint ? 13 : 9;
     if (moving && this.onGround) {
       p.legL.rotation.x = Math.sin(this.animT * walkRate) * 0.65;
@@ -316,20 +272,24 @@ export class Player {
         p.armR.rotation.x = -Math.sin(this.animT * walkRate) * 0.5;
       }
       p.armL.rotation.x = Math.sin(this.animT * walkRate) * 0.5;
+      // subtle run lean
+      p.torso.rotation.x = sprint ? 0.12 : 0.05;
     } else {
       p.legL.rotation.x *= 1 - Math.min(1, 8 * dt);
       p.legR.rotation.x *= 1 - Math.min(1, 8 * dt);
       p.armL.rotation.x *= 1 - Math.min(1, 8 * dt);
+      p.torso.rotation.x *= 1 - Math.min(1, 6 * dt);
     }
     if (!this.onGround) {
       p.legL.rotation.x = 0.4; p.legR.rotation.x = -0.3;
     }
+    // idle breath
+    p.head.position.y = 1.58 + Math.sin(this.animT * 2.2) * 0.008;
 
     // ----- basic attack swing -----
     if (this.attackT > 0) {
       this.attackT -= dt;
-      const t = 1 - this.attackT / this.attackDur; // 0→1
-      // arm swings across: combo alternates diagonal/horizontal
+      const t = 1 - this.attackT / this.attackDur;
       const swing = Math.sin(t * Math.PI);
       if (this.combo === 0) {
         p.armR.rotation.x = -2.4 + t * 2.9;
@@ -342,14 +302,11 @@ export class Player {
         p.armR.rotation.z = 0.35 * Math.sin(t * Math.PI * 2);
       }
       this.pushTrail();
-      // hit at mid-swing
       if (!this.didHit && t > 0.35) {
         this.didHit = true;
         this.meleeHit(1 + this.combo * 0.15);
       }
-      if (this.attackT <= 0) {
-        p.armR.rotation.set(0, 0, 0);
-      }
+      if (this.attackT <= 0) p.armR.rotation.set(0, 0, 0);
     }
 
     // ----- sword skills -----
@@ -358,7 +315,7 @@ export class Player {
       this.skillT -= dt;
       const t = 1 - Math.max(0, this.skillT) / s.dur;
       if (this.activeSkill === 0) {
-        // Horizontal: full spin
+        // Horizontal — full spinning slash
         this.mesh.rotation.y = this.yaw + t * Math.PI * 2;
         p.armR.rotation.x = -1.4;
         p.armR.rotation.z = -1.2;
@@ -366,26 +323,28 @@ export class Player {
         if (!this.didHit && t > 0.4) {
           this.didHit = true;
           this.meleeHit(s.mult, 3.4, Math.PI * 2.1);
-          this.game.effects.ring(this.position, s.color, 2.6, 0.5);
+          g.effects.ring(this.position, s.color, 2.6, 0.5);
         }
       } else if (this.activeSkill === 1) {
-        // Rage Spike: thrust while dashing
+        // Rage Spike — dashing thrust
         p.armR.rotation.x = -Math.PI / 2;
         const dashSpd = 16 * (1 - t * 0.5);
         this.position.addScaledVector(this.dashDir, dashSpd * dt);
         g.world.clampPosition(this.position, 0.45);
+        this.position.y = terrainHeight(this.position.x, this.position.z) + this.jumpY;
         this.pushTrail();
         this.meleeHit(s.mult, 2.2, 2.4, this.rageHit);
       } else {
-        // Starburst: 8 rapid strikes
-        p.armR.rotation.x = -2.2 + Math.sin(t * Math.PI * 8) * 1.4;
-        p.armR.rotation.z = Math.cos(t * Math.PI * 8) * 0.8;
+        // Vertical Arc — two heavy V-shaped cuts
+        const phase = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+        p.armR.rotation.x = -2.6 + phase * 3.2;
+        p.armR.rotation.z = t < 0.5 ? -0.4 : 0.4;
         this.pushTrail();
-        const strikeIdx = Math.floor(t * 8);
-        if (strikeIdx > this.starburstHits && strikeIdx <= 8) {
-          this.starburstHits = strikeIdx;
-          this.meleeHit(s.mult, 3.0, 2.3);
-          g.audio.swish();
+        const strike = t < 0.5 ? 1 : 2;
+        if (this.arcHits < strike && phase > 0.45) {
+          this.arcHits = strike;
+          this.meleeHit(s.mult, 2.9, 2.0);
+          if (strike === 2) g.audio.swish();
         }
       }
       if (this.skillT <= 0) {
@@ -400,10 +359,9 @@ export class Player {
   }
 
   pushTrail() {
-    // world positions of blade base and tip
-    this.parts.blade.updateWorldMatrix(true, false);
-    this._tipA.set(0, -0.45, 0).applyMatrix4(this.parts.blade.matrixWorld);
-    this._tipB.set(0, 0.55, 0).applyMatrix4(this.parts.blade.matrixWorld);
+    this.sword.updateWorldMatrix(true, false);
+    this._tipA.set(0, 0.15, 0).applyMatrix4(this.sword.matrixWorld);
+    this._tipB.set(0, 1.05, 0).applyMatrix4(this.sword.matrixWorld);
     this.trail.push(this._tipB, this._tipA);
   }
 }

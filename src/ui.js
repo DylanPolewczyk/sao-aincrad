@@ -22,6 +22,15 @@ export class UI {
       locName: document.getElementById('loc-name'),
       zoneTag: document.getElementById('zone-tag'),
       announce: document.getElementById('announce'),
+      quest: document.getElementById('quest-tracker'),
+      questTitle: document.getElementById('quest-title'),
+      questObj: document.getElementById('quest-obj'),
+      dialog: document.getElementById('dialog'),
+      dialogName: document.getElementById('dialog-name'),
+      dialogText: document.getElementById('dialog-text'),
+      interact: document.getElementById('interact'),
+      subtitle: document.getElementById('subtitle'),
+      kayaba: document.getElementById('kayaba-overlay'),
       hud: document.getElementById('hud'),
       deathScreen: document.getElementById('death-screen'),
       victoryScreen: document.getElementById('victory-screen'),
@@ -32,6 +41,60 @@ export class UI {
     this.announceTimer = null;
     this.bossSegs = [];
     this._v = new THREE.Vector3();
+    // dialog state
+    this.dialogLines = null;
+    this.dialogIdx = 0;
+    this.dialogDone = null;
+  }
+
+  // ------- quest tracker -------
+  setQuest(title, objective = '') {
+    if (!title) { this.el.quest.style.display = 'none'; return; }
+    this.el.quest.style.display = 'block';
+    this.el.questTitle.textContent = title;
+    this.el.questObj.textContent = objective;
+  }
+
+  // ------- NPC dialog -------
+  get dialogOpen() { return !!this.dialogLines; }
+  showDialog(name, lines, onDone) {
+    this.dialogLines = lines;
+    this.dialogIdx = 0;
+    this.dialogDone = onDone;
+    this.el.dialog.style.display = 'block';
+    this.el.dialogName.textContent = name;
+    this.el.dialogText.textContent = lines[0];
+  }
+  advanceDialog() {
+    if (!this.dialogLines) return;
+    this.dialogIdx++;
+    if (this.dialogIdx >= this.dialogLines.length) {
+      this.el.dialog.style.display = 'none';
+      const cb = this.dialogDone;
+      this.dialogLines = null;
+      this.dialogDone = null;
+      if (cb) cb();
+    } else {
+      this.el.dialogText.textContent = this.dialogLines[this.dialogIdx];
+    }
+  }
+
+  // ------- interact prompt -------
+  setInteract(text) {
+    if (!text) { this.el.interact.style.display = 'none'; return; }
+    this.el.interact.style.display = 'block';
+    this.el.interact.innerHTML = `<b>E</b> ${text}`;
+  }
+
+  // ------- Kayaba opening -------
+  setSubtitle(text) {
+    if (!text) { this.el.subtitle.style.opacity = 0; return; }
+    this.el.subtitle.textContent = text;
+    this.el.subtitle.style.opacity = 1;
+  }
+  showKayabaOverlay(on) {
+    this.el.kayaba.style.opacity = on ? 1 : 0;
+    this.el.kayaba.style.pointerEvents = 'none';
   }
 
   // ------- player frame -------
