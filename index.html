@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sword Art Online — Aincrad</title>
+<style>
+  :root {
+    --hp-green: #7fe23c;
+    --hp-yellow: #ffd23c;
+    --hp-red: #ff4a3c;
+    --sao-cyan: #6ee7ff;
+    --sao-orange: #ffb43c;
+    --panel: rgba(10, 20, 34, 0.72);
+    --panel-edge: rgba(140, 220, 255, 0.35);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  body {
+    font-family: "Segoe UI", "Trebuchet MS", Arial, sans-serif;
+    color: #e8f6ff;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* ---------- generic panel chrome ---------- */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 6px;
+    box-shadow: 0 0 12px rgba(60, 160, 220, 0.25), inset 0 0 18px rgba(80, 180, 255, 0.06);
+    backdrop-filter: blur(3px);
+  }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+  #player-frame {
+    position: absolute; top: 18px; left: 18px;
+    padding: 10px 16px 12px 14px;
+    min-width: 320px;
+  }
+  #player-name-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 5px; }
+  #player-name { font-size: 17px; font-weight: 600; letter-spacing: 2px; }
+  #player-level {
+    font-size: 11px; color: #0b1622; background: var(--sao-cyan);
+    padding: 1px 8px; border-radius: 3px; font-weight: 700;
+  }
+  .bar-shell {
+    position: relative; height: 14px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(160, 230, 255, 0.4);
+    border-radius: 7px; overflow: hidden;
+  }
+  .bar-fill {
+    position: absolute; inset: 0; width: 100%;
+    background: linear-gradient(180deg, #a5f26b 0%, var(--hp-green) 45%, #4da31d 100%);
+    border-radius: 7px;
+    transition: width 0.18s ease-out, background 0.3s;
+  }
+  .bar-fill.warn { background: linear-gradient(180deg, #ffe680 0%, var(--hp-yellow) 45%, #c79a12 100%); }
+  .bar-fill.danger { background: linear-gradient(180deg, #ff9a8a 0%, var(--hp-red) 45%, #b3271c 100%); }
+  .bar-ghost {
+    position: absolute; inset: 0; width: 100%;
+    background: rgba(255, 90, 70, 0.55); border-radius: 7px;
+    transition: width 0.6s ease-out 0.25s;
+  }
+  #player-hp-text {
+    position: absolute; right: 8px; top: -1px; font-size: 10.5px;
+    color: #eaffea; text-shadow: 0 0 3px #000; letter-spacing: 1px; line-height: 15px;
+  }
+  #xp-shell {
+    margin-top: 5px; height: 5px; background: rgba(0,0,0,0.5);
+    border-radius: 3px; overflow: hidden; border: 1px solid rgba(160,230,255,0.25);
+  }
+  #xp-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #3ca8ff, var(--sao-cyan)); transition: width 0.25s; }
+  #col-row { margin-top: 6px; font-size: 11px; color: #ffd98a; letter-spacing: 1px; }
+
+  /* ---------- target frame ---------- */
+  #target-frame {
+    position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+    padding: 8px 18px 10px; min-width: 300px; text-align: center;
+    display: none;
+  }
+  #target-name { font-size: 14px; letter-spacing: 2px; margin-bottom: 5px; }
+  #target-name .lv { color: var(--sao-cyan); font-size: 11px; margin-right: 8px; }
+  #target-cursor { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff5a4a; margin-right: 7px; box-shadow: 0 0 6px #ff5a4a; }
+
+  /* ---------- boss bar ---------- */
+  #boss-frame {
+    position: absolute; top: 84px; left: 50%; transform: translateX(-50%);
+    width: min(680px, 70vw); padding: 8px 20px 12px; text-align: center;
+    display: none;
+    border-color: rgba(255, 120, 90, 0.5);
+  }
+  #boss-name { font-size: 16px; letter-spacing: 3px; color: #ffd6c8; margin-bottom: 6px; text-shadow: 0 0 8px rgba(255,80,50,0.7); }
+  .boss-bars { display: flex; flex-direction: column; gap: 3px; }
+  .boss-bar-shell { height: 9px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,150,120,0.45); border-radius: 5px; overflow: hidden; }
+  .boss-bar-fill { height: 100%; width: 100%; background: linear-gradient(180deg, #ff8a6a, #e03020); transition: width 0.15s; }
+
+  /* ---------- skill hotbar ---------- */
+  #hotbar {
+    position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px;
+  }
+  .skill {
+    width: 58px; height: 58px; position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 10px; letter-spacing: 0.5px; color: #cfeeff; text-align: center;
+    overflow: hidden;
+  }
+  .skill .icon { font-size: 20px; line-height: 1; margin-bottom: 3px; filter: drop-shadow(0 0 4px rgba(110,231,255,0.8)); }
+  .skill .key {
+    position: absolute; top: 2px; left: 5px; font-size: 10px; color: var(--sao-cyan); font-weight: 700;
+  }
+  .skill .cd {
+    position: absolute; inset: 0; background: rgba(6, 12, 22, 0.82);
+    transform-origin: bottom; transform: scaleY(0); pointer-events: none;
+  }
+  .skill.ready { box-shadow: 0 0 10px rgba(110, 231, 255, 0.45), inset 0 0 14px rgba(110, 231, 255, 0.12); }
+
+  /* ---------- location + hints ---------- */
+  #location {
+    position: absolute; top: 18px; right: 18px; padding: 7px 16px;
+    font-size: 13px; letter-spacing: 2px; color: #d8f4ff; text-align: right;
+  }
+  #zone-tag { font-size: 10px; color: var(--sao-cyan); letter-spacing: 3px; display: block; margin-top: 2px; }
+  #zone-tag.safe { color: #9dffa0; }
+  #hint {
+    position: absolute; bottom: 20px; left: 18px; padding: 8px 14px;
+    font-size: 11px; line-height: 1.7; color: #b8dcf2; letter-spacing: 0.5px;
+  }
+  #hint b { color: var(--sao-cyan); font-weight: 600; }
+  #crosshair {
+    position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+    transform: translate(-50%, -50%); border-radius: 50%;
+    background: rgba(220, 245, 255, 0.85); box-shadow: 0 0 5px rgba(110,231,255,0.9);
+  }
+
+  /* ---------- floating combat text ---------- */
+  .dmg {
+    position: absolute; transform: translate(-50%, -50%);
+    font-weight: 700; font-size: 20px; color: #fff;
+    text-shadow: 0 0 6px rgba(255,120,40,0.95), 0 1px 2px #000;
+    pointer-events: none; white-space: nowrap;
+    transition: opacity 0.2s;
+  }
+  .dmg.crit { font-size: 27px; color: #ffe27a; text-shadow: 0 0 10px rgba(255,180,30,1), 0 1px 2px #000; }
+  .dmg.player-hit { color: #ff7a6a; text-shadow: 0 0 8px rgba(255,40,20,0.9), 0 1px 2px #000; }
+  .dmg.heal { color: #9dffa0; text-shadow: 0 0 8px rgba(60,255,90,0.9), 0 1px 2px #000; }
+  .dmg.xp { font-size: 14px; color: var(--sao-cyan); text-shadow: 0 0 8px rgba(110,231,255,0.9); }
+
+  /* ---------- system announcements ---------- */
+  #announce {
+    position: absolute; top: 26%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 30px; letter-spacing: 6px; color: #fff;
+    text-shadow: 0 0 18px var(--sao-cyan), 0 0 40px rgba(110,231,255,0.6);
+    opacity: 0; transition: opacity 0.5s; text-align: center; white-space: nowrap;
+  }
+  #announce .sub { display: block; font-size: 14px; letter-spacing: 3px; color: #bfeaff; margin-top: 8px; }
+
+  /* ---------- full-screen overlays ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 40;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, #0a1626 0%, #030710 75%);
+  }
+  #title-screen h1 {
+    font-size: clamp(34px, 7vw, 72px); font-weight: 300; letter-spacing: 14px;
+    color: #eaf7ff; text-shadow: 0 0 24px rgba(110, 231, 255, 0.8);
+    margin-bottom: 4px; text-align: center;
+  }
+  #title-screen h2 {
+    font-size: clamp(12px, 2vw, 18px); font-weight: 400; letter-spacing: 10px;
+    color: var(--sao-orange); margin-bottom: 56px;
+  }
+  #link-start {
+    pointer-events: auto; cursor: pointer;
+    font-size: 22px; letter-spacing: 8px; font-weight: 600;
+    color: #eaf7ff; background: transparent;
+    border: 1px solid var(--sao-cyan); border-radius: 4px;
+    padding: 16px 54px;
+    box-shadow: 0 0 18px rgba(110, 231, 255, 0.35), inset 0 0 24px rgba(110, 231, 255, 0.08);
+    transition: all 0.25s; font-family: inherit;
+  }
+  #link-start:hover {
+    background: rgba(110, 231, 255, 0.12);
+    box-shadow: 0 0 34px rgba(110, 231, 255, 0.7), inset 0 0 30px rgba(110, 231, 255, 0.18);
+    letter-spacing: 11px;
+  }
+  #title-hint { margin-top: 34px; font-size: 12px; color: #7fa8c4; letter-spacing: 2px; }
+
+  /* link start streak animation */
+  #streaks { position: fixed; inset: 0; z-index: 50; pointer-events: none; display: none; background: #fff; opacity: 0; }
+  #streaks.go { display: block; animation: whiteout 1.6s ease-in forwards; }
+  @keyframes whiteout {
+    0% { opacity: 0; } 55% { opacity: 0; } 80% { opacity: 1; } 100% { opacity: 1; }
+  }
+  .streak {
+    position: absolute; top: 50%; left: 50%;
+    width: 3px; height: 3px; border-radius: 3px;
+    animation: fly 0.9s linear infinite;
+  }
+  @keyframes fly {
+    0% { transform: translate(-50%, -50%) rotate(var(--a)) translateX(30px) scaleX(1); opacity: 0; }
+    15% { opacity: 1; }
+    100% { transform: translate(-50%, -50%) rotate(var(--a)) translateX(72vmax) scaleX(28); opacity: 1; }
+  }
+
+  #death-screen, #victory-screen { display: none; z-index: 45; background: rgba(2, 3, 8, 0.82); }
+  #death-screen h1 {
+    font-size: clamp(30px, 6vw, 60px); letter-spacing: 12px; font-weight: 300;
+    color: #ff3524; text-shadow: 0 0 30px rgba(255, 30, 10, 0.9);
+    margin-bottom: 40px;
+  }
+  #victory-screen h1 {
+    font-size: clamp(28px, 5vw, 52px); letter-spacing: 10px; font-weight: 300;
+    color: #ffe9a8; text-shadow: 0 0 30px rgba(255, 200, 60, 0.9);
+    margin-bottom: 16px; text-align: center;
+  }
+  #victory-screen p { color: #bfeaff; letter-spacing: 2px; margin-bottom: 40px; }
+  .overlay button.respawn {
+    pointer-events: auto; cursor: pointer;
+    font-size: 15px; letter-spacing: 4px; color: #eaf7ff;
+    background: transparent; border: 1px solid var(--panel-edge); border-radius: 4px;
+    padding: 12px 36px; font-family: inherit; transition: all 0.2s;
+  }
+  .overlay button.respawn:hover { background: rgba(110, 231, 255, 0.12); box-shadow: 0 0 20px rgba(110,231,255,0.4); }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="hud">
+    <div id="player-frame" class="panel">
+      <div id="player-name-row">
+        <span id="player-name">KIRITO</span>
+        <span id="player-level">LV 1</span>
+      </div>
+      <div class="bar-shell">
+        <div id="player-hp-ghost" class="bar-ghost"></div>
+        <div id="player-hp" class="bar-fill"></div>
+        <span id="player-hp-text">100 / 100</span>
+      </div>
+      <div id="xp-shell"><div id="xp-fill"></div></div>
+      <div id="col-row">◈ <span id="col-amt">0</span> Col</div>
+    </div>
+
+    <div id="target-frame" class="panel">
+      <div id="target-name"><span id="target-cursor"></span><span class="lv" id="target-lv">LV 1</span><span id="target-nm">Frenzy Boar</span></div>
+      <div class="bar-shell" style="height: 10px;">
+        <div id="target-hp" class="bar-fill"></div>
+      </div>
+    </div>
+
+    <div id="boss-frame" class="panel">
+      <div id="boss-name">ILLFANG THE KOBOLD LORD</div>
+      <div class="boss-bars" id="boss-bars"></div>
+    </div>
+
+    <div id="location" class="panel">
+      <span id="loc-name">Floor 1 — Town of Beginnings</span>
+      <span id="zone-tag" class="safe">SAFE ZONE</span>
+    </div>
+
+    <div id="hotbar">
+      <div class="skill panel ready" id="skill-0"><span class="key">1</span><span class="icon">⟿</span>Horizontal<div class="cd"></div></div>
+      <div class="skill panel ready" id="skill-1"><span class="key">2</span><span class="icon">➹</span>Rage Spike<div class="cd"></div></div>
+      <div class="skill panel ready" id="skill-2"><span class="key">3</span><span class="icon">✦</span>Starburst<div class="cd"></div></div>
+    </div>
+
+    <div id="hint" class="panel">
+      <b>WASD</b> move &nbsp;·&nbsp; <b>Mouse</b> camera &nbsp;·&nbsp; <b>LMB</b> attack &nbsp;·&nbsp; <b>1/2/3</b> sword skills<br>
+      <b>Space</b> jump &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp; <b>Esc</b> release mouse
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="announce"></div>
+  </div>
+
+  <div id="streaks"></div>
+
+  <div id="title-screen" class="overlay">
+    <h1>SWORD ART ONLINE</h1>
+    <h2>— AINCRAD · FLOOR 1 —</h2>
+    <button id="link-start">LINK START</button>
+    <div id="title-hint">This is a game. But it is not something you play.</div>
+  </div>
+
+  <div id="death-screen" class="overlay">
+    <h1>YOU ARE DEAD</h1>
+    <button class="respawn" id="respawn-btn">RETURN TO TOWN</button>
+  </div>
+
+  <div id="victory-screen" class="overlay">
+    <h1>FLOOR 1 CLEARED</h1>
+    <p id="victory-sub">Illfang the Kobold Lord has been defeated.</p>
+    <button class="respawn" id="continue-btn">KEEP EXPLORING</button>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
